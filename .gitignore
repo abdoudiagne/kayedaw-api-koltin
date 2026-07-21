@@ -4,5 +4,7 @@ target/
 .vscode/
 .env
 
-# Configuration locale contenant des secrets
-config/
+# Configuration locale contenant des secrets.
+# Le slash initial est indispensable : sans lui, la règle exclurait AUSSI
+# src/main/kotlin/com/kayedaw/config/ (le code source de configuration).
+/config/

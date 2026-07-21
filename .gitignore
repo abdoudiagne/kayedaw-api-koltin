@@ -1,0 +1,8 @@
+target/
+.idea/
+*.iml
+.vscode/
+.env
+
+# Configuration locale contenant des secrets
+config/

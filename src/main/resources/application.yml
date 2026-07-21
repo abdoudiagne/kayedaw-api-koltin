@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: kayedaw-api
+
+  # Java 21 — Project Loom : une requête = un thread virtuel
+  threads:
+    virtual:
+      enabled: true
+
+  datasource:
+    url: jdbc:h2:mem:kayedaw;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    hikari:
+      # Le pool reste la vraie limite : les threads virtuels ne le remplacent pas
+      maximum-pool-size: 20
+  jpa:
+    hibernate:
+      ddl-auto: update
+    # Désactivé : sur une API REST, open-in-view masque les problèmes de lazy
+    # loading et retient une connexion pendant tout le rendu de la réponse.
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+
+# Configuration typée (@ConfigurationProperties) plutôt que des @Value épars
+kayedaw:
+  jwt:
+    # En production : variable d'environnement ou coffre (Vault). Jamais commité.
+    secret: ${JWT_SECRET:ZmFrZS1zZWNyZXQtZGUtZGV2LWEtcmVtcGxhY2VyLTMyLW9jdGV0cy1taW5pbXVt}
+    validite: ${JWT_VALIDITE:1h}          # Duration : "1h", "30m", "PT15M"…
+  entrainement:
+    plafond-hebdo-km: 80.0
+    distance-max-seance-km: 200.0
+
+  # Services externes appelés en WebClient + coroutines (Open-Meteo, sans clé API)
+  meteo:
+    url-geocodage: ${METEO_GEOCODAGE_URL:https://geocoding-api.open-meteo.com/v1/search}
+    url-archive: ${METEO_ARCHIVE_URL:https://archive-api.open-meteo.com/v1/archive}
+    url-qualite-air: ${METEO_AIR_URL:https://air-quality-api.open-meteo.com/v1/air-quality}
+    tentatives: 2                    # 2 essais supplémentaires maximum
+    delai-entre-tentatives: 200ms    # point de départ du backoff exponentiel
+
+  # Météo-France (DPClim) : observations officielles pour les séances PASSÉES.
+  # Le secret n'est JAMAIS commité — il vient de l'environnement. Sans lui,
+  # l'intégration se désactive et Open-Meteo prend le relais.
+  meteo-france:
+    application-id: ${METEOFRANCE_APPLICATION_ID:}
+
+  # Aucun timeout n'est laissé à sa valeur par défaut : règle non négociable
+  http-client:
+    connexion: 2s
+    lecture: 3s
+    reponse: 3s
+    max-connexions: 50
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    org.springframework.security: INFO
+    # Décommenter pour observer le N+1 :
+    # org.hibernate.SQL: DEBUG

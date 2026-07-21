@@ -1,0 +1,1257 @@
+{
+  "info": {
+    "_postman_id": "8f3c1a20-7d41-4c9e-9b62-1a5e7c0d4f11",
+    "name": "KayeDaw API — CRUD + JWT",
+    "description": "Collection de test de l'API KayeDaw (Kotlin / Spring Boot / Java 21).\n\n## Utilisation\n\n1. Démarrer l'API : `mvn spring-boot:run` (http://localhost:8080)\n2. Sélectionner l'environnement **KayeDaw — Local**\n3. Lancer **1. Authentification > Inscription** : le jeton JWT est capturé automatiquement dans la variable `token`\n4. Toutes les requêtes suivantes s'authentifient seules\n\nAstuce : `Runner` (Run collection) exécute l'ensemble dans l'ordre, avec les assertions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Génère un email unique à la première requête, pour pouvoir relancer",
+          "// la collection autant de fois que voulu sans conflit d'inscription.",
+          "if (!pm.collectionVariables.get('emailUnique')) {",
+          "    const suffixe = Date.now();",
+          "    pm.collectionVariables.set('emailUnique', `abdou.${suffixe}@test.fr`);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "emailUnique",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "seanceId",
+      "value": ""
+    },
+    {
+      "key": "tokenAutre",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentification",
+      "item": [
+        {
+          "name": "Inscription",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Un jeton JWT est retourné', () => {",
+                  "    pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(body.typeToken).to.eql('Bearer');",
+                  "});",
+                  "",
+                  "pm.test('Le rôle par défaut est USER', () => pm.expect(body.role).to.eql('USER'));",
+                  "",
+                  "// Le jeton est stocké : les requêtes suivantes l'utilisent automatiquement",
+                  "pm.environment.set('token', body.token);",
+                  "pm.collectionVariables.set('token', body.token);",
+                  "console.log('Jeton enregistré pour', body.email);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailUnique}}\",\n  \"motDePasse\": \"motdepasse123\",\n  \"nom\": \"Abdou Kane\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/inscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "inscription"
+              ]
+            },
+            "description": "Crée un compte et retourne un JWT. Le mot de passe est haché en BCrypt côté serveur."
+          }
+        },
+        {
+          "name": "Connexion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Un jeton est retourné', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+                  "",
+                  "// On rafraîchit le jeton courant",
+                  "pm.environment.set('token', body.token);",
+                  "pm.collectionVariables.set('token', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailUnique}}\",\n  \"motDePasse\": \"motdepasse123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/connexion",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "connexion"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Connexion — mauvais mot de passe (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Le message ne révèle pas si l\\'email existe', () => {",
+                  "    pm.expect(pm.response.json().message).to.include('incorrect');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailUnique}}\",\n  \"motDePasse\": \"mauvais-mot-de-passe\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/connexion",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "connexion"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Inscription — email déjà utilisé (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailUnique}}\",\n  \"motDePasse\": \"motdepasse123\",\n  \"nom\": \"Doublon\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/inscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "inscription"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Inscription — validation échouée (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Le détail de validation est renvoyé', () => {",
+                  "    pm.expect(pm.response.json().message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pas-un-email\",\n  \"motDePasse\": \"court\",\n  \"nom\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/inscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "inscription"
+              ]
+            },
+            "description": "Email invalide + mot de passe < 8 caractères + nom vide."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Séances (CRUD)",
+      "item": [
+        {
+          "name": "Créer une séance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.test('En-tête Location présent', () => {",
+                  "    pm.expect(pm.response.headers.get('Location')).to.include('/api/seances/');",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Allure calculée : 50 min / 10 km = 5.0', () => {",
+                  "    pm.expect(body.allureMinParKm).to.eql(5.0);",
+                  "});",
+                  "",
+                  "pm.test('Vitesse calculée : 12 km/h', () => {",
+                  "    pm.expect(body.vitesseKmH).to.eql(12.0);",
+                  "});",
+                  "",
+                  "pm.environment.set('seanceId', body.id);",
+                  "pm.collectionVariables.set('seanceId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ENDURANCE\",\n  \"distanceKm\": 10.0,\n  \"dureeMinutes\": 50,\n  \"date\": \"2026-07-22\",\n  \"commentaire\": \"Sortie matinale, sensations correctes\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            },
+            "description": "Types possibles : ENDURANCE, FRACTIONNE, SORTIE_LONGUE, RECUPERATION"
+          }
+        },
+        {
+          "name": "Créer une 2e séance (fractionné)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Allure : 32 min / 8 km = 4.0', () => {",
+                  "    pm.expect(pm.response.json().allureMinParKm).to.eql(4.0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"FRACTIONNE\",\n  \"distanceKm\": 8.0,\n  \"dureeMinutes\": 32,\n  \"date\": \"2026-07-24\",\n  \"commentaire\": \"10 x 400m sur piste\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Lister ses séances (paginé)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Réponse paginée', () => {",
+                  "    pm.expect(body).to.have.property('content');",
+                  "    pm.expect(body).to.have.property('totalElements');",
+                  "});",
+                  "",
+                  "pm.test('Au moins une séance', () => pm.expect(body.content.length).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances?page=0&size=20&sort=date,desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "sort",
+                  "value": "date,desc"
+                }
+              ]
+            },
+            "description": "Ne retourne que les séances de l'utilisateur authentifié."
+          }
+        },
+        {
+          "name": "Consulter une séance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Identifiant correspondant', () => {",
+                  "    pm.expect(String(pm.response.json().id)).to.eql(String(pm.collectionVariables.get('seanceId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/{{seanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "{{seanceId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filtrer par type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Toutes les séances sont du type demandé', () => {",
+                  "    pm.response.json().content.forEach(s => pm.expect(s.type).to.eql('FRACTIONNE'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/type/FRACTIONNE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "type",
+                "FRACTIONNE"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Statistiques sur une période",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Champs de statistiques présents', () => {",
+                  "    pm.expect(body).to.have.property('nombreSeances');",
+                  "    pm.expect(body).to.have.property('distanceTotaleKm');",
+                  "    pm.expect(body).to.have.property('allureMoyenneMinParKm');",
+                  "});",
+                  "",
+                  "console.log('Volume :', body.distanceTotaleKm, 'km —', body.nombreSeances, 'séance(s)');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/statistiques?debut=2026-07-01&fin=2026-07-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "statistiques"
+              ],
+              "query": [
+                {
+                  "key": "debut",
+                  "value": "2026-07-01"
+                },
+                {
+                  "key": "fin",
+                  "value": "2026-07-31"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Modifier une séance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Le type a été modifié', () => pm.expect(body.type).to.eql('RECUPERATION'));",
+                  "pm.test('Nouvelle allure : 30 min / 5 km = 6.0', () => {",
+                  "    pm.expect(body.allureMinParKm).to.eql(6.0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"RECUPERATION\",\n  \"distanceKm\": 5.0,\n  \"dureeMinutes\": 30,\n  \"date\": \"2026-07-22\",\n  \"commentaire\": \"Footing de récupération\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/{{seanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "{{seanceId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Supprimer une séance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 204 No Content', () => pm.response.to.have.status(204));",
+                  "pm.test('Corps vide', () => pm.expect(pm.response.text()).to.be.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/{{seanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "{{seanceId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vérifier la suppression (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/{{seanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "{{seanceId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Sécurité & erreurs",
+      "item": [
+        {
+          "name": "Sans jeton (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            },
+            "description": "Aucune authentification : la route protégée doit refuser l'accès."
+          }
+        },
+        {
+          "name": "Jeton invalide (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer ceci.nest.pas.un.jwt.valide"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            },
+            "description": "Un jeton malformé doit être rejeté sans erreur 500."
+          }
+        },
+        {
+          "name": "Validation — distance négative (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Le champ fautif est signalé', () => {",
+                  "    pm.expect(pm.response.json().message).to.include('distance');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ENDURANCE\",\n  \"distanceKm\": -5.0,\n  \"dureeMinutes\": 50,\n  \"date\": \"2026-07-22\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Séance inexistante (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('Structure d\\'erreur normalisée', () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.have.property('statut', 404);",
+                  "    pm.expect(b).to.have.property('horodatage');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "999999"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Isolation — créer un 2e compte",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 201 Created', () => pm.response.to.have.status(201));",
+                  "",
+                  "// On mémorise le jeton du 2e utilisateur pour le test d'isolation",
+                  "pm.collectionVariables.set('tokenAutre', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"autre.{{$timestamp}}@test.fr\",\n  \"motDePasse\": \"motdepasse123\",\n  \"nom\": \"Autre coureur\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/inscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "inscription"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Isolation — créer une séance (compte 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('seanceId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ENDURANCE\",\n  \"distanceKm\": 6.0,\n  \"dureeMinutes\": 36,\n  \"date\": \"2026-07-29\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Isolation — accès refusé (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('Un utilisateur ne voit pas les séances d\\'un autre', () => {",
+                  "    pm.expect(pm.response.json().statut).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenAutre}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seances/{{seanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances",
+                "{{seanceId}}"
+              ]
+            },
+            "description": "Le 2e utilisateur tente d'accéder à la séance du 1er : doit être refusé."
+          }
+        },
+        {
+          "name": "Règle métier — plafond hebdo (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "pm.test('Le message évoque le plafond', () => {",
+                  "    pm.expect(pm.response.json().message).to.include('plafond');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"SORTIE_LONGUE\",\n  \"distanceKm\": 95.0,\n  \"dureeMinutes\": 500,\n  \"date\": \"2026-08-12\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            },
+            "description": "95 km sur une semaine dépasse le plafond de 80 km : la règle métier doit refuser."
+          }
+        },
+        {
+          "name": "Règle métier — date future (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Motif DATE_FUTURE', () => pm.expect(pm.response.json().motif).to.eql('DATE_FUTURE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ENDURANCE\",\n  \"distanceKm\": 10.0,\n  \"dureeMinutes\": 50,\n  \"date\": \"2030-01-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            },
+            "description": "Une séance qui n'a pas eu lieu est refusée par la règle métier."
+          }
+        },
+        {
+          "name": "Admin interdit à un USER (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 403 Forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/utilisateurs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "utilisateurs"
+              ]
+            },
+            "description": "@PreAuthorize(\"hasRole('ADMIN')\") : un simple utilisateur est refusé."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Système (Java 21)",
+      "item": [
+        {
+          "name": "Diagnostic — threads virtuels",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('Java 21', () => pm.expect(body.versionJava).to.match(/^21/));",
+                  "",
+                  "pm.test('La requête est traitée par un thread virtuel', () => {",
+                  "    pm.expect(body.threadVirtuel).to.be.true;",
+                  "});",
+                  "",
+                  "console.log('JVM', body.versionJava, '| thread virtuel :', body.threadVirtuel);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/systeme/execution",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "systeme",
+                "execution"
+              ]
+            },
+            "description": "Vérifie que spring.threads.virtual.enabled=true est bien actif (Project Loom)."
+          }
+        },
+        {
+          "name": "Actuator — santé",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Application UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Appel sortant (WebClient)",
+      "item": [
+        {
+          "name": "Conditions météo d'une ville",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ou 204 selon la disponibilité du service externe', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const b = pm.response.json();",
+                  "    pm.test('Ville retournée', () => pm.expect(b.ville).to.be.a('string'));",
+                  "    pm.test('Alertes présentes sous forme de liste', () => pm.expect(b.alertes).to.be.an('array'));",
+                  "    console.log('Température max :', b.temperatureMaxC, '°C | alertes :', b.alertes);",
+                  "} else {",
+                  "    console.log('Service météo indisponible : repli en 204, comportement attendu.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meteo/conditions?ville=Lille&date=2026-07-19",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meteo",
+                "conditions"
+              ],
+              "query": [
+                {
+                  "key": "ville",
+                  "value": "Lille"
+                },
+                {
+                  "key": "date",
+                  "value": "2026-07-19"
+                }
+              ]
+            },
+            "description": "Appel sortant réel : géocodage puis météo et qualité de l'air en parallèle (WebClient + coroutines). Retourne 204 si le service externe est injoignable — la panne externe ne provoque jamais de 500."
+          }
+        },
+        {
+          "name": "Ville inconnue (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meteo/conditions?ville=Zzzzzville&date=2026-07-19",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meteo",
+                "conditions"
+              ],
+              "query": [
+                {
+                  "key": "ville",
+                  "value": "Zzzzzville"
+                },
+                {
+                  "key": "date",
+                  "value": "2026-07-19"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Séance enrichie avec la météo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Statut 201 Created', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('La séance est créée même si la météo est indisponible', () => {",
+                  "    pm.expect(b.id).to.be.a('number');",
+                  "});",
+                  "console.log('Ville :', b.ville, '| température :', b.temperatureC, '| alertes :', b.alertesMeteo);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ENDURANCE\",\n  \"distanceKm\": 7.0,\n  \"dureeMinutes\": 38,\n  \"date\": \"2026-07-19\",\n  \"ville\": \"Lille\",\n  \"commentaire\": \"Sortie enrichie par appel sortant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seances"
+              ]
+            },
+            "description": "Le champ `ville` déclenche l'appel sortant. Best-effort : si le service externe est en panne, la séance est créée sans les données météo."
+          }
+        }
+      ]
+    }
+  ]
+}

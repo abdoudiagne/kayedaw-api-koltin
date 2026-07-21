@@ -1,0 +1,33 @@
+spring:
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:h2:mem:kayedaw-test;DB_CLOSE_DELAY=-1
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+kayedaw:
+  jwt:
+    secret: ZmFrZS1zZWNyZXQtZGUtdGVzdC1hLXJlbXBsYWNlci0zMi1vY3RldHMtbWluaW11bQ==
+    validite: 1h
+  entrainement:
+    plafond-hebdo-km: 80.0
+    distance-max-seance-km: 200.0
+
+  # Services externes appelés en WebClient + coroutines (Open-Meteo, sans clé API)
+  meteo:
+    url-geocodage: ${METEO_GEOCODAGE_URL:https://geocoding-api.open-meteo.com/v1/search}
+    url-archive: ${METEO_ARCHIVE_URL:https://archive-api.open-meteo.com/v1/archive}
+    url-qualite-air: ${METEO_AIR_URL:https://air-quality-api.open-meteo.com/v1/air-quality}
+    tentatives: 2                    # 2 essais supplémentaires maximum
+    delai-entre-tentatives: 200ms    # point de départ du backoff exponentiel
+
+  # Aucun timeout n'est laissé à sa valeur par défaut : règle non négociable
+  http-client:
+    connexion: 2s
+    lecture: 3s
+    reponse: 3s
+    max-connexions: 50

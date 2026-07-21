@@ -21,8 +21,33 @@ mvn spring-boot:run   # http://localhost:8080
 Base H2 en mémoire · console : http://localhost:8080/h2-console
 (`jdbc:h2:mem:kayedaw`, user `sa`, sans mot de passe)
 
-**Tests d'API** : importer `postman/` dans Postman (26 requêtes, jeton capturé
+**Tests d'API** : importer `postman/` dans Postman (29 requêtes, jeton capturé
 automatiquement) — voir `postman/README.md`.
+
+### Comptes de démonstration
+
+Recréés à chaque démarrage (base H2 en mémoire) par `config/DatasInitiales.kt`,
+annoté `@Profile("!prod")` :
+
+| Compte | Mot de passe | Rôle |
+|--------|--------------|------|
+| `admin@kayedaw.fr` | `12345` | ADMIN |
+| `user@kayedaw.fr` | `12345` | USER |
+
+L'inscription publique force `Role.USER` : un ADMIN ne peut venir que de ce seed.
+
+### Météo-France (optionnel)
+
+Les séances passées sont enrichies avec les observations officielles Météo-France
+(API DPClim) si le secret est fourni — sinon l'application bascule seule sur
+Open-Meteo, sans configuration :
+
+```bash
+export METEOFRANCE_APPLICATION_ID="<base64 de client_id:client_secret>"
+```
+
+En local, `config/application.yml` (ignoré par git, non empaqueté dans le JAR)
+fait le même travail : Spring Boot lit `./config/` en priorité sur le classpath.
 
 ---
 
@@ -68,10 +93,14 @@ automatiquement) — voir `postman/README.md`.
 - Les **limites** de Loom documentées (pool HikariCP, CPU-bound, pas de pooling)
 
 ### Tests — la pyramide complète
+
+74 tests répartis sur 12 fichiers, du test Kotlin pur au parcours de bout en bout.
+
 | Niveau | Fichiers | Spring ? |
 |--------|----------|----------|
-| Kotlin pur | `ExtensionsTest`, `ResultatTest` | non (ms) |
-| Service + mocks MockK | `SeanceServiceTest`, `JwtServiceTest`, `StatistiquesServiceTest` | non |
+| Kotlin pur | `ExtensionsTest`, `ResultatTest`, `AnalyseurCsvDpclimTest` | non (ms) |
+| Service + mocks MockK | `SeanceServiceTest`, `JwtServiceTest`, `StatistiquesServiceTest`, `EnrichissementMeteoServiceTest` | non |
+| Client HTTP sortant | `MeteoClientTest` (MockWebServer) | non |
 | Persistance | `SeanceRepositoryTest` (`@DataJpaTest`) | partiel |
 | Web | `SeanceControllerTest`, `AdminSecuriteTest` (`@WebMvcTest`) | partiel |
 | Bout en bout | `ParcoursCompletE2ETest` (`@SpringBootTest`) | oui |
@@ -94,16 +123,24 @@ automatiquement) — voir `postman/README.md`.
 | GET | `/api/seances/{id}` | Détail (403 si elle ne vous appartient pas) |
 | GET | `/api/seances/type/{type}` | Filtre par type |
 | GET | `/api/seances/statistiques?debut=&fin=` | Agrégats calculés en parallèle |
+| GET | `/api/seances/records` | Records personnels |
 | PUT | `/api/seances/{id}` | Modifie |
 | DELETE | `/api/seances/{id}` | Supprime |
+| GET | `/api/profil` | Consulte son profil |
+| PUT | `/api/profil` | Modifie son profil |
+| PUT | `/api/profil/mot-de-passe` | Change son mot de passe |
+| GET | `/api/meteo/villes` | Autocomplétion de villes (géocodage) |
 | GET | `/api/meteo/conditions?ville=&date=` | Appel sortant : météo + qualité de l'air |
 | GET | `/api/systeme/execution` | Diagnostic threads virtuels |
 
 ### Réservé ADMIN
-| Méthode | Route |
-|---------|-------|
-| GET | `/api/admin/utilisateurs` |
-| GET | `/api/admin/metriques` |
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| GET | `/api/admin/utilisateurs` | Liste des comptes |
+| GET | `/api/admin/utilisateurs/{id}/seances` | Séances d'un compte |
+| PATCH | `/api/admin/utilisateurs/{id}/role` | Change le rôle |
+| DELETE | `/api/admin/utilisateurs/{id}` | Supprime un compte |
+| GET | `/api/admin/metriques` | Métriques de l'API |
 
 ### Exemple
 
@@ -124,9 +161,19 @@ curl -X POST http://localhost:8080/api/seances \
 
 0. **Enrichissement météo** optionnel : si `ville` est fourni à la création, l'API
    interroge un service externe. En cas de panne, la séance est créée sans ces données.
-1. **Plafond hebdomadaire** de 80 km (configurable) → HTTP 422
-2. **Pas de séance dans le futur** → HTTP 422
+1. **Horizon de planification** : une séance peut être planifiée jusqu'à 14 jours
+   à l'avance (`kayedaw.entrainement.planification-max-jours`). Au-delà, ni prévision
+   météo fiable ni plan crédible → HTTP 422 `DATE_TROP_LOINTAINE`
+2. **Plafond hebdomadaire** de 80 km (configurable) → HTTP 422 `PLAFOND_HEBDOMADAIRE`
 3. **Propriété des données** : chacun ne voit que ses séances → HTTP 403
+
+Les deux premières règles sont volontairement **asymétriques** vis-à-vis des
+séances planifiées :
+
+- elles **comptent** dans le plafond hebdomadaire — autant signaler le
+  surentraînement dès la planification ;
+- elles sont **exclues des statistiques** — les agrégats doivent refléter ce qui a
+  réellement été couru (d'où la borne `maintenant` dans le JPQL de `SeanceRepository`).
 
 Les deux premières sont modélisées par une `sealed interface` plutôt que par des
 exceptions : ce sont des cas métier **normaux**, visibles dans la signature de la
@@ -142,6 +189,8 @@ com.kayedaw
 ├─ config/
 │  ├─ AppProperties.kt          @ConfigurationProperties typé
 │  ├─ SecurityConfig.kt         chaîne de filtres, BCrypt, règles d'accès
+│  ├─ WebClientConfig.kt        timeouts et pool du client HTTP sortant
+│  ├─ DatasInitiales.kt         comptes de démonstration (@Profile("!prod"))
 │  └─ VirtualThreadConfig.kt    Java 21 / Loom
 ├─ common/
 │  ├─ Extensions.kt             fonctions d'extension
@@ -151,15 +200,29 @@ com.kayedaw
 │  ├─ CompteurRequetes.kt       ReentrantLock vs synchronized
 │  └─ SystemeController.kt      diagnostic Java 21
 ├─ meteo/                       appel sortant WebClient + coroutines
-│  ├─ MeteoClient.kt            suspend + retry + repli
-│  ├─ EnrichissementMeteoService.kt  orchestration parallèle
+│  ├─ MeteoClient.kt            Open-Meteo : suspend + retry + repli
+│  ├─ MeteoFranceClient.kt      DPClim : commande puis scrutation, parsing CSV
+│  ├─ JetonMeteoFranceService.kt  OAuth2, cache du jeton, Mutex
+│  ├─ EnrichissementMeteoService.kt  orchestration parallèle, choix de la source
+│  ├─ MeteoController.kt        /api/meteo
 │  └─ MeteoDtos.kt              DTO tolérants aux champs inconnus
 ├─ security/                    JwtService, JwtAuthFilter, UserDetailsService
 ├─ auth/                        inscription / connexion
-├─ user/                        entité Utilisateur, rôles
+├─ user/                        entité Utilisateur, rôles, ProfilController
 ├─ seance/                      entité, DTO, repository, services, controller
 └─ admin/                       endpoints réservés ADMIN (@PreAuthorize)
 ```
+
+### Sources météo
+
+Trois sources, choisies par `EnrichissementMeteoService` et signalées au client
+via le champ `sourceMeteo` :
+
+| Cas | Source | Nature |
+|-----|--------|--------|
+| Séance passée, station disponible | `OBSERVATION_METEO_FRANCE` | observations réelles, température à l'heure de la séance |
+| Séance passée, DPClim indisponible | `ARCHIVE_OPEN_METEO` | réanalyse, agrégats journaliers |
+| Séance planifiée | `PREVISION_OPEN_METEO` | prévision (horizon 16 jours) |
 
 ---
 

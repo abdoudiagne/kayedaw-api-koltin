@@ -15,7 +15,9 @@ Prerequisites: JDK 21, Maven 3.9+. H2 is in-memory (`jdbc:h2:mem:kayedaw`, user 
 
 The Angular frontend lives at **`../kayedaw-web-angular`** and proxies `/api` here. Both repos are published under `github.com/abdoudiagne` (`kayedaw-api-kotlin`, `kayedaw-web-angular`), branch `main`.
 
-⚠️ Le dossier s'appelait `kayedaw-api-**koltin**` — une faute de frappe, corrigée partout dans le code et la documentation. Le **remote git pointe cependant encore sur l'ancienne orthographe** : le dépôt GitHub n'a pas été renommé. Renommer d'abord sur GitHub, mettre l'URL locale à jour ensuite ; l'inverse casse les `push`.
+Ce dépôt s'est longtemps appelé `kayedaw-api-**koltin**` — une faute de frappe, corrigée partout : dossier local, documentation, nom GitHub et URL du remote. GitHub conserve une redirection depuis l'ancien nom, donc un clone ancien continue de fonctionner.
+
+⚠️ L'ordre comptait, et il est trop tard pour se tromper : renommer d'abord sur GitHub, mettre l'URL locale à jour ensuite. L'inverse casse les `push`.
 
 Demo accounts, re-seeded on every start by `config/DatasInitiales.kt`:
 

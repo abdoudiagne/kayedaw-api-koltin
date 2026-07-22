@@ -3,6 +3,7 @@ package com.kayedaw.meteo
 import kotlinx.coroutines.runBlocking
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
+import com.kayedaw.common.ouSiVide
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -51,14 +52,41 @@ class MeteoController(
 ) {
 
     /**
+     * Référentiel des pays proposés à la saisie.
+     *
+     * Servi par l'API et non écrit en dur côté front : le géocodage dépend de
+     * ce même référentiel, et deux listes divergentes produiraient des pays
+     * sélectionnables pour lesquels aucune ville ne serait trouvable.
+     */
+    @GetMapping("/pays")
+    fun pays(): List<PaysDto> = Pays.TOUS
+
+    /**
      * Autocomplétion du champ ville. Le front n'appelle PAS le géocodeur
      * directement : passer par l'API évite d'exposer un service tiers au
      * navigateur, et permettrait d'y ajouter un cache ou un quota.
      */
     @GetMapping("/villes")
-    fun villes(@RequestParam(name = "q") terme: String): List<SuggestionVille> =
-        runBlocking { client.rechercherVilles(terme) }
-            .map { SuggestionVille(it.ville, it.departement, it.latitude, it.longitude) }
+    fun villes(
+        @RequestParam(name = "q") terme: String,
+        /**
+         * Optionnel et non obligatoire : l'autocomplétion est publique (elle
+         * sert à l'inscription, avant toute session) et un ancien client qui
+         * ne l'envoie pas doit continuer de fonctionner — sur la France.
+         */
+        @RequestParam(required = false) pays: String?
+    ): List<SuggestionVille> =
+        runBlocking { client.rechercherVilles(terme, pays = pays.ouSiVide(MeteoClient.PAYS_PAR_DEFAUT)) }
+            /*
+             * Le département quand on l'a — c'est le repère qu'attend un
+             * utilisateur français — la RÉGION à défaut. Hors de France, le
+             * code postal ne donne rien : la liste n'affichait alors que des
+             * noms nus, sans rien qui les rattache au pays choisi. Le filtre
+             * était pourtant correct ; c'est la LISIBILITÉ qui manquait.
+             */
+            .map {
+                SuggestionVille(it.ville, it.departement ?: it.region, it.latitude, it.longitude)
+            }
 
     /**
      * Conditions pour une ville et un instant.
@@ -72,6 +100,7 @@ class MeteoController(
     @GetMapping("/conditions")
     fun conditions(
         @RequestParam ville: String,
+        @RequestParam(required = false) pays: String?,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate?,
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) dateHeure: LocalDateTime?
@@ -80,7 +109,9 @@ class MeteoController(
             ?: date?.atTime(12, 0)
             ?: return ResponseEntity.badRequest().build()
 
-        val conditions = runBlocking { enrichissement.conditions(ville, instant) }
+        val conditions = runBlocking {
+            enrichissement.conditions(ville, instant, pays.ouSiVide(MeteoClient.PAYS_PAR_DEFAUT))
+        }
             ?: return ResponseEntity.noContent().build()      // 204 : service indisponible ou ville inconnue
 
         return ResponseEntity.ok(
@@ -103,6 +134,11 @@ class MeteoController(
 /** Suggestion d'autocomplétion : juste ce dont le front a besoin. */
 data class SuggestionVille(
     val nom: String,
+    /**
+     * Repère géographique affiché sous le nom : numéro de département en
+     * France, région administrative ailleurs. Le champ garde son nom pour ne
+     * pas casser le client Angular, qui le rend tel quel.
+     */
     val departement: String? = null,
     val latitude: Double,
     val longitude: Double

@@ -83,6 +83,42 @@ class MeteoClientTest {
         assertThat(requete.path).contains("/geocodage").contains("name=Lille")
     }
 
+    /**
+     * ┌─────────────────────────────────────────────────────────────────────┐
+     * │ LA PROFONDEUR DE RECHERCHE EST UNE RÈGLE, PAS UN RÉGLAGE            │
+     * └─────────────────────────────────────────────────────────────────────┘
+     *
+     * Défaut signalé en usage réel : « bambi » avec le pays Sénégal ne
+     * proposait RIEN, alors que Bambilor y est une commune connue du
+     * géocodeur. Open-Meteo classe MONDIALEMENT avant de tronquer, puis
+     * applique le filtre de pays : la commune était évincée par ses homonymes
+     * plus peuplés d'Angola et de Tanzanie. Mesuré : zéro résultat sénégalais
+     * à `count=20` comme à `count=50`, et Bambilor à `count=100`.
+     *
+     * Ce test fige donc la valeur dans la REQUÊTE SORTANTE. La baisser
+     * « parce que 100 c'est beaucoup » ferait silencieusement disparaître
+     * toutes les petites communes, et le défaut ne se verrait qu'à l'usage,
+     * sur une ville qu'on n'aurait pas pensé à tester.
+     */
+    @Test
+    fun `la recherche de villes interroge en profondeur et cible le pays`() = runTest {
+        repondre("{\"results\":[{\"name\":\"Bambilor\",\"latitude\":14.8,"
+            + "\"longitude\":-17.18,\"country\":\"Sénégal\",\"country_code\":\"SN\"}]}")
+
+        val resultats = client.rechercherVilles("bambi", pays = "Sénégal")
+
+        assertThat(resultats).singleElement()
+            .satisfies({ assertThat(it.ville).isEqualTo("Bambilor") })
+
+        val requete = serveur.takeRequest()
+        assertThat(requete.path)
+            .contains("name=bambi")
+            .contains("count=100")
+            // Le code ISO allège la réponse — mais ne dispense NI du count
+            // élevé, NI du filtrage local : à count=20 il rend zéro résultat.
+            .contains("countryCode=SN")
+    }
+
     @Test
     fun `retourne null quand la ville est inconnue`() = runTest {
         repondre("""{"results":null}""")

@@ -75,12 +75,20 @@ data class ModifierProfilRequest(
 
     @field:NotBlank(message = "la ville est obligatoire")
     @field:Size(max = 100)
-    val villeParDefaut: String
+    val villeParDefaut: String,
+
+    /**
+     * Optionnel dans la REQUÊTE, jamais nul en base : un client qui ne l'envoie
+     * pas conserve la valeur existante. Cela évite qu'un ancien client, ignorant
+     * du champ, écrase le pays par une chaîne vide à chaque enregistrement.
+     */
+    @field:Size(max = 100)
+    val pays: String? = null
 )
 
 data class ChangerMotDePasseRequest(
     @field:NotBlank val motDePasseActuel: String,
-    @field:NotBlank @field:Size(min = 8, message = "le mot de passe doit faire au moins 8 caractères")
+    @field:NotBlank @field:Size(min = 5, message = "le mot de passe doit faire au moins 5 caractères")
     val nouveauMotDePasse: String
 )
 
@@ -90,6 +98,7 @@ data class ProfilResponse(
     val nom: String,
     val role: String,
     val villeParDefaut: String,
+    val pays: String,
     val nombreSeances: Long,
     val distanceTotaleKm: Double,
     val premiereSeance: LocalDateTime? = null
@@ -112,6 +121,7 @@ class ProfilService(
             nom = utilisateur.nom,
             role = utilisateur.role.name,
             villeParDefaut = utilisateur.villeParDefaut,
+            pays = utilisateur.pays,
             nombreSeances = seances.count { !it.estPlanifiee() }.toLong(),
             distanceTotaleKm = seances.filterNot { it.estPlanifiee() }.sumOf { it.distanceKm },
             premiereSeance = seances.firstOrNull()?.dateHeure
@@ -124,6 +134,8 @@ class ProfilService(
         parEmail(email).apply {
             nom = request.nom.trim()
             villeParDefaut = request.villeParDefaut.trim()
+            // Absent de la requête = inchangé, voir ModifierProfilRequest
+            request.pays?.trim()?.takeIf { it.isNotBlank() }?.let { pays = it }
         }
         return profil(email)
     }

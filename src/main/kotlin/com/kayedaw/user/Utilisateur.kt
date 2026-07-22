@@ -5,6 +5,18 @@ import jakarta.persistence.*
 enum class Role { USER, ADMIN }
 
 /**
+ * Thème d'affichage choisi par l'utilisateur.
+ *
+ * SYSTEME reste le défaut : le front suivait jusqu'ici `prefers-color-scheme`
+ * sans possibilité de le contredire, ce qui convient à la majorité. On ajoute
+ * une DÉROGATION explicite, on ne remplace pas la préférence système.
+ */
+enum class Theme { SYSTEME, CLAIR, SOMBRE }
+
+/** Langue d'interface. Le contenu métier (villes, commentaires) n'est pas traduit. */
+enum class Langue { FR, EN }
+
+/**
  * ┌─────────────────────────────────────────────────────────────────────────┐
  * │ QUESTION 2.3 — Pourquoi `class` et non `data class` pour une entité ?   │
  * └─────────────────────────────────────────────────────────────────────────┘
@@ -33,7 +45,7 @@ class Utilisateur(
     @Column(nullable = false)
     var motDePasse: String,          // haché (BCrypt), jamais en clair
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     var nom: String,
 
     /**
@@ -47,9 +59,51 @@ class Utilisateur(
     @Column(nullable = false, length = 100)
     var villeParDefaut: String,
 
+    /**
+     * Pays de résidence, « France » par défaut.
+     *
+     * ⚠️ Valeur par défaut EN BASE (`columnDefinition`) et pas seulement en
+     * Kotlin : `ddl-auto: update` ajoute une colonne NOT NULL à une table déjà
+     * peuplée, et sans valeur par défaut côté SQL la migration échoue sur les
+     * lignes existantes. Le défaut Kotlin ne couvre que les nouvelles entités.
+     *
+     * Le pays accompagne la ville pour le géocodage météo : « Lille » existe
+     * aussi en Belgique et aux États-Unis.
+     */
+    @Column(nullable = false, length = 100, columnDefinition = "varchar(100) default 'France'")
+    var pays: String = "France",
+
     @Enumerated(EnumType.STRING)     // STRING et non ORDINAL : robuste au réordonnancement
     @Column(nullable = false)
     var role: Role = Role.USER,
+
+    /**
+     * Préférences d'AFFICHAGE, portées par l'utilisateur et non par le
+     * navigateur : elles doivent suivre le compte d'un appareil à l'autre.
+     *
+     * Colonnes scalaires ici plutôt qu'une entité dédiée : ce sont deux valeurs
+     * uniques par compte, une table séparée n'apporterait qu'une jointure.
+     * Les valeurs par défaut PAR TYPE DE SÉANCE, elles, sont multiples : elles
+     * vivent dans PreferenceSeance (paquet `preference`).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    var theme: Theme = Theme.SYSTEME,
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    var langue: Langue = Langue.FR,
+
+    /**
+     * Compte ACTIF ou bloqué par un administrateur.
+     *
+     * Bloquer plutôt que supprimer : la suppression emporte les séances et
+     * l'historique, elle est irréversible. Le blocage suspend l'accès en
+     * gardant les données — c'est ce qu'on veut pour un abus présumé, le temps
+     * de vérifier, ou pour un départ temporaire.
+     */
+    @Column(nullable = false)
+    var actif: Boolean = true,
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null

@@ -65,7 +65,14 @@ class JwtAuthFilter(
                 val details = runCatching { utilisateurDetailsService.loadUserByUsername(email) }
                     .getOrNull()
 
-                if (details != null && jwtService.estValide(token, details.username)) {
+                /*
+                 * ⚠️ `isEnabled` est vérifié ICI aussi, pas seulement à la
+                 * connexion. Un jeton reste valide jusqu'à une heure : sans ce
+                 * test, un compte bloqué continuerait d'accéder à l'API pendant
+                 * tout ce temps, et le blocage ne serait qu'un affichage.
+                 */
+                if (details != null && details.isEnabled &&
+                    jwtService.estValide(token, details.username)) {
                     SecurityContextHolder.getContext().authentication =
                         UsernamePasswordAuthenticationToken(details, null, details.authorities).apply {
                             this.details = WebAuthenticationDetailsSource().buildDetails(request)

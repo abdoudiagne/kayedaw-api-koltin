@@ -54,12 +54,16 @@ class EnrichissementMeteoService(
      * Une seule signature, en LocalDateTime : deux surcharges (date / date-heure)
      * créaient une ambiguïté de résolution dès qu'un test passait `any()`.
      */
-    suspend fun conditions(ville: String, dateHeure: LocalDateTime): ConditionsSeance? =
+    suspend fun conditions(
+        ville: String,
+        dateHeure: LocalDateTime,
+        pays: String = MeteoClient.PAYS_PAR_DEFAUT
+    ): ConditionsSeance? =
         withTimeoutOrNull(BUDGET_TOTAL_MS) {
             val date: LocalDate = dateHeure.toLocalDate()
-            val coordonnees = client.coordonnees(ville)
+            val coordonnees = client.coordonnees(ville, pays)
             if (coordonnees == null) {
-                log.info("ville inconnue : {}, enrichissement ignoré", ville)
+                log.info("ville inconnue : {} ({}), enrichissement ignoré", ville, pays)
                 return@withTimeoutOrNull null
             }
 

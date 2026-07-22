@@ -36,6 +36,7 @@ kayedaw:
   entrainement:
     plafond-hebdo-km: 80.0
     distance-max-seance-km: 200.0
+    planification-max-jours: 30
 
   # Services externes appelés en WebClient + coroutines (Open-Meteo, sans clé API)
   meteo:

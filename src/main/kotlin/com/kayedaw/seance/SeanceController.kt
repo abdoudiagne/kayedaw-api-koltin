@@ -7,7 +7,9 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.web.PageableDefault
 import org.springframework.format.annotation.DateTimeFormat
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
@@ -89,6 +91,33 @@ class SeanceController(
     ): Page<SeanceResponse> {
         compteur.incrementer("GET /api/seances")
         return service.rechercher(utilisateur.username, debut, fin, type, recherche, pageable)
+    }
+
+
+    /**
+     * ┌─────────────────────────────────────────────────────────────────────┐
+     * │ EXPORT PDF — le carnet complet, pas la page affichée                │
+     * └─────────────────────────────────────────────────────────────────────┘
+     *
+     * Volontairement SANS pagination ni filtre : on exporte un carnet, pas un
+     * écran. Reprendre les filtres courants produirait un document dont le
+     * contenu dépend de l'état de l'interface au moment du clic — impossible à
+     * relire six mois plus tard sans se demander ce qu'il contient.
+     *
+     * `Content-Disposition: attachment` déclenche le téléchargement plutôt que
+     * l'affichage dans l'onglet ; le nom du fichier porte la date, faute de
+     * quoi trois exports successifs s'écrasent dans le dossier de
+     * téléchargement.
+     */
+    @GetMapping("/export.pdf", produces = [MediaType.APPLICATION_PDF_VALUE])
+    fun exporterPdf(@AuthenticationPrincipal utilisateur: UserDetails): ResponseEntity<ByteArray> {
+        compteur.incrementer("GET /api/seances/export.pdf")
+        val pdf = service.exporterEnPdf(utilisateur.username)
+        val jour = LocalDate.now()
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"seances-$jour.pdf\"")
+            .contentType(MediaType.APPLICATION_PDF)
+            .body(pdf)
     }
 
     @GetMapping("/type/{type}")

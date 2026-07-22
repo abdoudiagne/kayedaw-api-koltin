@@ -40,6 +40,21 @@ class Seance(
     var ville: String? = null,
 
     /**
+     * Pays de la séance, et non du compte.
+     *
+     * Le géocodage se faisait sur le pays de l'UTILISATEUR : un coureur
+     * français en déplacement à Dakar voyait sa séance rattachée à un
+     * homonyme français, ou à rien du tout. Or on ne court pas toujours chez
+     * soi, et une séance est un événement DATÉ ET SITUÉ — le pays lui
+     * appartient au même titre que la ville et l'heure.
+     *
+     * Nullable comme `ville` : les séances créées avant cette colonne n'en
+     * portent pas, et une valeur inventée après coup serait un mensonge.
+     */
+    @Column(length = 100)
+    var pays: String? = null,
+
+    /**
      * `temperatureMaxC` et non `temperatureC` : la valeur est le MAXIMUM du jour.
      * Un nom vague à côté d'un `temperatureMinC` serait un piège à contresens.
      */

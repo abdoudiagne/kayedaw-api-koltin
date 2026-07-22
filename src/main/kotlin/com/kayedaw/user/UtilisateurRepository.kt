@@ -21,4 +21,11 @@ interface UtilisateurRepository : JpaRepository<Utilisateur, Long> {
     ): Page<Utilisateur>
 
     fun countByRole(role: Role): Long
+
+    /**
+     * Administrateurs ACTIFS. Distinct de countByRole : un admin bloqué ne peut
+     * plus administrer, le compter comme rempart laisserait bloquer le dernier
+     * administrateur réellement opérationnel.
+     */
+    fun countByRoleAndActifTrue(role: Role): Long
 }

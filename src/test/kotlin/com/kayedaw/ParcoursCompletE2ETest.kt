@@ -56,6 +56,41 @@ class ParcoursCompletE2ETest(@Autowired private val restTemplate: TestRestTempla
         assertThat(connexion.body?.token).isNotBlank()
     }
 
+    /**
+     * ┌─────────────────────────────────────────────────────────────────────┐
+     * │ LE LIEU DU COMPTE VOYAGE EN ENTIER — ville ET pays                  │
+     * └─────────────────────────────────────────────────────────────────────┘
+     *
+     * `AuthResponse` ne portait que `villeParDefaut`. Le client Angular
+     * pré-remplit le formulaire de séance avec ce lieu : faute de pays, il
+     * retombait sur son repli « France », et un compte sénégalais ouvrait
+     * « Nouvelle séance » sur Dakar / France — introuvable au géocodage, donc
+     * aucune suggestion et aucune météo, alors que le profil était juste.
+     *
+     * Les deux champs sont indissociables : une ville ne se géocode pas sans
+     * son pays. Ce test le fige des DEUX côtés de l'authentification, une
+     * inscription et une connexion n'empruntant pas le même chemin.
+     */
+    @Test
+    fun `l authentification renvoie la ville ET le pays du compte`() {
+        val email = "u-${UUID.randomUUID()}@test.fr"
+        val inscription = restTemplate.postForEntity(
+            "/api/auth/inscription",
+            InscriptionRequest(email, "motdepasse123", "Coureur", "Dakar", "Sénégal"),
+            AuthResponse::class.java)
+
+        assertThat(inscription.body?.villeParDefaut).isEqualTo("Dakar")
+        assertThat(inscription.body?.pays).isEqualTo("Sénégal")
+
+        val connexion = restTemplate.postForEntity(
+            "/api/auth/connexion",
+            ConnexionRequest(email, "motdepasse123"),
+            AuthResponse::class.java)
+
+        assertThat(connexion.body?.villeParDefaut).isEqualTo("Dakar")
+        assertThat(connexion.body?.pays).isEqualTo("Sénégal")
+    }
+
     @Test
     fun `refuse la connexion avec un mauvais mot de passe`() {
         val u = inscrire()
@@ -168,8 +203,10 @@ class ParcoursCompletE2ETest(@Autowired private val restTemplate: TestRestTempla
     fun `refuse une seance planifiee au-dela de l horizon`() {
         val token = inscrire().token
 
+        // L'horizon vaut 30 jours : on vise nettement au-delà pour ne pas
+        // jouer le test sur la borne elle-même, à la seconde près.
         val refus = restTemplate.exchange("/api/seances", HttpMethod.POST,
-            HttpEntity(CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, LocalDateTime.now().plusDays(30)),
+            HttpEntity(CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, LocalDateTime.now().plusDays(45)),
                 entete(token)), String::class.java)
 
         assertThat(refus.statusCode).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY)

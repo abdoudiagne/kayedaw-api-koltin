@@ -28,9 +28,17 @@ class UtilisateurDetailsService(
             ?.let(::versUserDetails)                       // let + référence de fonction
             ?: throw UsernameNotFoundException("utilisateur introuvable : $email")
 
-    private fun versUserDetails(u: Utilisateur): UserDetails = User(
-        u.email,
-        u.motDePasse,
-        listOf(SimpleGrantedAuthority("ROLE_${u.role.name}"))
-    )
+    /**
+     * `disabled` porte le blocage administratif.
+     *
+     * On ne l'implémente PAS en levant une exception ici : le contrat de
+     * UserDetails prévoit déjà cet état, et DaoAuthenticationProvider le
+     * vérifie avant même de comparer le mot de passe — un compte bloqué ne
+     * peut donc pas non plus servir à deviner un mot de passe valide.
+     */
+    private fun versUserDetails(u: Utilisateur): UserDetails = User.withUsername(u.email)
+        .password(u.motDePasse)
+        .authorities(listOf(SimpleGrantedAuthority("ROLE_${u.role.name}")))
+        .disabled(!u.actif)
+        .build()
 }

@@ -57,6 +57,7 @@ class DatasInitiales {
                     motDePasse = passwordEncoder.encode(compte.motDePasse),
                     nom = compte.nom,
                     villeParDefaut = VILLE_PAR_DEFAUT,
+                    pays = PAYS_PAR_DEFAUT,
                     role = compte.role
                 )
             )
@@ -83,6 +84,7 @@ class DatasInitiales {
 
         /** Ville de référence des comptes de démonstration. */
         const val VILLE_PAR_DEFAUT = "Lille"
+        const val PAYS_PAR_DEFAUT = "France"
 
         private val COMPTES = listOf(
             CompteDemo(EMAIL_ADMIN, MOT_DE_PASSE_DEMO, "Administrateur ", Role.ADMIN),

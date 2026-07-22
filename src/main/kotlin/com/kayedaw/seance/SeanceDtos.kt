@@ -46,7 +46,15 @@ data class CreerSeanceRequest(
      * la séance est créée sans ces informations.
      */
     @field:Size(max = 100)
-    val ville: String? = null
+    val ville: String? = null,
+
+    /**
+     * Pays de la séance. Absent, on retombe sur celui du COMPTE : un client
+     * plus ancien qui ne l'envoie pas continue de fonctionner exactement comme
+     * avant, et le cas courant — courir chez soi — ne demande aucune saisie.
+     */
+    @field:Size(max = 100)
+    val pays: String? = null
 )
 
 data class ModifierSeanceRequest(
@@ -74,6 +82,7 @@ data class SeanceResponse(
     val vitesseKmH: Double,
     val intensite: String,
     val ville: String? = null,
+    val pays: String? = null,
     val temperatureMaxC: Double? = null,
     val temperatureMinC: Double? = null,
     val temperatureALHeureC: Double? = null,
@@ -101,6 +110,7 @@ data class SeanceResponse(
             vitesseKmH = s.vitesseKmH(),
             intensite = s.intensite(),
             ville = s.ville,
+            pays = s.pays,
             temperatureMaxC = s.temperatureMaxC,
             temperatureMinC = s.temperatureMinC,
             temperatureALHeureC = s.temperatureALHeureC,

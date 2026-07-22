@@ -32,6 +32,7 @@ class AuthService(
                 motDePasse = passwordEncoder.encode(request.motDePasse),   // BCrypt
                 nom = request.nom.trim(),
                 villeParDefaut = request.villeParDefaut.trim(),
+                pays = request.pays?.trim()?.takeIf { it.isNotBlank() } ?: "France",
                 role = Role.USER
             )
         )
@@ -67,6 +68,7 @@ class AuthService(
         email = u.email,
         nom = u.nom,
         role = u.role.name,
-        villeParDefaut = u.villeParDefaut
+        villeParDefaut = u.villeParDefaut,
+        pays = u.pays
     )
 }

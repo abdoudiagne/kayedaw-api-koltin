@@ -13,6 +13,7 @@ import kotlinx.coroutines.runBlocking
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @Service
 @Transactional(readOnly = true)
@@ -99,7 +100,33 @@ class SeanceService(
              * principal.
              */
             request.ville?.takeIf { it.isNotBlank() }?.let { villeDemandee ->
-                runBlocking { enrichissement.conditions(villeDemandee, dateHeure) }?.also { c ->
+                /*
+                 * ┌───────────────────────────────────────────────────────────┐
+                 * │ Le pays de la SÉANCE, à défaut celui du compte            │
+                 * └───────────────────────────────────────────────────────────┘
+                 *
+                 * Un pays reste indispensable : c'est lui qui lève l'homonymie.
+                 * « Dakar » désigne la capitale du Sénégal pour qui court au
+                 * Sénégal, et non un homonyme choisi au hasard du classement du
+                 * géocodeur.
+                 *
+                 * Mais il ne peut plus venir du seul COMPTE : on ne court pas
+                 * toujours chez soi. Un coureur français en déplacement voyait
+                 * sa séance de Dakar rattachée à un homonyme français, ou à
+                 * rien. Le pays du compte n'est donc plus qu'un DÉFAUT — celui
+                 * du cas courant, qui n'exige aucune saisie.
+                 *
+                 * Il est aussi STOCKÉ sur la séance : la météo l'est déjà, et
+                 * afficher plus tard un pays lu sur le compte prêterait à un
+                 * compte déménagé des séances qu'il n'a jamais courues là.
+                 */
+                val paysDemande = request.pays?.trim()?.takeIf { it.isNotBlank() }
+                    ?: utilisateur.pays
+                pays = paysDemande
+
+                runBlocking {
+                    enrichissement.conditions(villeDemandee, dateHeure, paysDemande)
+                }?.also { c ->
                     ville = c.ville
                     temperatureMaxC = c.temperatureMaxC
                     temperatureMinC = c.temperatureMinC
@@ -211,6 +238,73 @@ class SeanceService(
             commentaire = request.commentaire?.trim()
         }
         return SeanceResponse.de(seance)
+    }
+
+    /**
+     * Le carnet complet, mis en tableau pour l'export.
+     *
+     * ⚠️ Les séances PLANIFIÉES y figurent, contrairement aux statistiques qui
+     * les excluent. Ce n'est pas une incohérence : un carnet rend compte de ce
+     * qui est écrit dedans, y compris ce qui est prévu, là où une statistique
+     * prétend décrire ce qui a été couru. La colonne « État » lève l'ambiguïté
+     * plutôt que de masquer les lignes.
+     */
+    /**
+     * Allure décimale -> « 5'30" ».
+     *
+     * ⚠️ L'arrondi peut donner SOIXANTE secondes : 5.999 min/km rendrait
+     * « 5'60" », qui ne veut rien dire. Le report sur la minute est le même
+     * garde-fou que celui du pipe Angular — les deux formatages doivent
+     * s'accorder, l'utilisateur comparant l'écran et le PDF.
+     */
+    private fun formaterAllure(allure: Double): String {
+        var minutes = allure.toInt()
+        var secondes = Math.round((allure - minutes) * 60).toInt()
+        if (secondes == 60) {
+            minutes += 1
+            secondes = 0
+        }
+        return "%d'%02d\"".format(minutes, secondes)
+    }
+
+    @Transactional(readOnly = true)
+    fun exporterEnPdf(emailUtilisateur: String): ByteArray {
+        val utilisateur = utilisateurRepository.findByEmail(emailUtilisateur)
+            ?: throw AccesRefuseException("utilisateur inconnu")
+
+        val seances = seanceRepository.findByUtilisateurIdOrderByDateHeureAsc(utilisateur.id!!)
+        val formatDate = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+        val lignes = seances.map { s ->
+            listOf(
+                s.dateHeure.format(formatDate),
+                s.type.name.lowercase().replaceFirstChar { it.uppercase() },
+                "%.1f".format(s.distanceKm),
+                "${s.dureeMinutes} min",
+                formaterAllure(s.allureMinParKm()),
+                listOfNotNull(s.ville, s.pays).joinToString(", ").ifBlank { "—" },
+                s.temperatureALHeureC?.let { "$it °C" } ?: s.temperatureMaxC?.let { "$it °C" } ?: "—",
+                if (s.estPlanifiee()) "Planifiée" else "Réalisée",
+                s.commentaire ?: ""
+            )
+        }
+
+        return DocumentPdf.tableau(
+            titre = "Carnet d'entraînement — ${utilisateur.nom}",
+            sousTitre = "${seances.size} séance(s) · ${DocumentPdf.horodatage(LocalDateTime.now())}",
+            colonnes = listOf(
+                DocumentPdf.Colonne("Date", 1.5f),
+                DocumentPdf.Colonne("Type", 1.2f),
+                DocumentPdf.Colonne("Distance", 0.9f),
+                DocumentPdf.Colonne("Durée", 0.9f),
+                DocumentPdf.Colonne("Allure", 1f),
+                DocumentPdf.Colonne("Lieu", 2f),
+                DocumentPdf.Colonne("Température", 1.1f),
+                DocumentPdf.Colonne("État", 1f),
+                DocumentPdf.Colonne("Commentaire", 2.5f)
+            ),
+            lignes = lignes
+        )
     }
 
     // ─────────────────────────────────────────────────────────────────────

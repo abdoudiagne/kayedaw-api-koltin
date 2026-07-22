@@ -66,7 +66,7 @@ class SeanceServiceTest {
     /** Simule ce que fait le save() de JPA : rendre l'entité avec un id attribué. */
     private fun avecId(s: Seance, id: Long) = Seance(
         type = s.type, distanceKm = s.distanceKm, dureeMinutes = s.dureeMinutes,
-        dateHeure = s.dateHeure, commentaire = s.commentaire, ville = s.ville,
+        dateHeure = s.dateHeure, commentaire = s.commentaire, ville = s.ville, pays = s.pays,
         temperatureMaxC = s.temperatureMaxC, temperatureMinC = s.temperatureMinC,
         precipitationMm = s.precipitationMm, ventKmH = s.ventKmH, pm25 = s.pm25,
         alertesMeteo = s.alertesMeteo,
@@ -117,11 +117,13 @@ class SeanceServiceTest {
     fun `refuse une seance planifiee au-dela de l horizon`() {
         every { utilisateurRepository.findByEmail("abdou@test.fr") } returns abdou
 
+        // L'horizon vaut 30 jours : on vise NETTEMENT au-delà, sinon le test
+        // se joue à la seconde près sur la borne elle-même.
         val resultat = service.creer(
-            CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, LocalDateTime.now().plusDays(30)),
+            CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, LocalDateTime.now().plusDays(45)),
             "abdou@test.fr")
 
-        assertThat(resultat).isEqualTo(ResultatCreationSeance.DateTropLointaine(14))
+        assertThat(resultat).isEqualTo(ResultatCreationSeance.DateTropLointaine(30))
         verify(exactly = 0) { seanceRepository.save(any()) }
     }
 
@@ -202,6 +204,79 @@ class SeanceServiceTest {
         assertThat(enregistree.temperatureMaxC).isEqualTo(31.0)
         assertThat(enregistree.ventKmH).isEqualTo(42.0)
         assertThat(enregistree.alertesMeteo).contains("forte chaleur").contains("vent fort")
+    }
+
+    /**
+     * ┌─────────────────────────────────────────────────────────────────────┐
+     * │ ON NE COURT PAS TOUJOURS CHEZ SOI                                   │
+     * └─────────────────────────────────────────────────────────────────────┘
+     *
+     * Le pays servait à lever l'homonymie et venait du COMPTE. Un coureur
+     * français en déplacement à Dakar voyait donc sa séance géocodée en
+     * France : rattachée à un homonyme, ou à rien du tout — et sans météo,
+     * sans qu'aucun message ne le signale, puisque la météo est un confort
+     * qui ne doit jamais faire échouer une création.
+     */
+    @Test
+    fun `le pays de la requete prime sur celui du compte`() {
+        every { utilisateurRepository.findByEmail("abdou@test.fr") } returns abdou
+        every { seanceRepository.findByUtilisateurIdAndDateHeureBetweenOrderByDateHeureAsc(1L, any(), any()) } returns emptyList()
+        coEvery { enrichissement.conditions("Dakar", hier, "Sénégal") } returns ConditionsSeance(
+            ville = "Dakar", temperatureMaxC = 29.0)
+
+        val capture = slot<Seance>()
+        every { seanceRepository.save(capture(capture)) } answers { avecId(capture.captured, 51L) }
+
+        service.creer(
+            CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, hier,
+                ville = "Dakar", pays = "Sénégal"),
+            "abdou@test.fr")
+
+        // Le géocodeur a bien été interrogé sur le Sénégal, pas sur la France
+        io.mockk.coVerify(exactly = 1) { enrichissement.conditions("Dakar", hier, "Sénégal") }
+        // ...et le pays est STOCKÉ : le relire sur le compte prêterait plus tard
+        // à un compte déménagé des séances qu'il n'a jamais courues là.
+        assertThat(capture.captured.pays).isEqualTo("Sénégal")
+        assertThat(capture.captured.ville).isEqualTo("Dakar")
+    }
+
+    /**
+     * Le cas courant — courir chez soi — ne doit exiger AUCUNE saisie, et un
+     * client plus ancien qui n'envoie pas le champ doit continuer de marcher
+     * exactement comme avant.
+     */
+    @Test
+    fun `sans pays dans la requete, celui du compte sert de repli`() {
+        every { utilisateurRepository.findByEmail("abdou@test.fr") } returns abdou
+        every { seanceRepository.findByUtilisateurIdAndDateHeureBetweenOrderByDateHeureAsc(1L, any(), any()) } returns emptyList()
+        coEvery { enrichissement.conditions("Lille", hier, "France") } returns ConditionsSeance(ville = "Lille")
+
+        val capture = slot<Seance>()
+        every { seanceRepository.save(capture(capture)) } answers { avecId(capture.captured, 52L) }
+
+        service.creer(
+            CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, hier, ville = "Lille"),
+            "abdou@test.fr")
+
+        io.mockk.coVerify(exactly = 1) { enrichissement.conditions("Lille", hier, "France") }
+        assertThat(capture.captured.pays).isEqualTo("France")
+    }
+
+    /** Des espaces ne sont pas un pays : ils ne doivent pas écraser le repli. */
+    @Test
+    fun `un pays vide retombe sur celui du compte`() {
+        every { utilisateurRepository.findByEmail("abdou@test.fr") } returns abdou
+        every { seanceRepository.findByUtilisateurIdAndDateHeureBetweenOrderByDateHeureAsc(1L, any(), any()) } returns emptyList()
+        coEvery { enrichissement.conditions("Lille", hier, "France") } returns ConditionsSeance(ville = "Lille")
+
+        val capture = slot<Seance>()
+        every { seanceRepository.save(capture(capture)) } answers { avecId(capture.captured, 53L) }
+
+        service.creer(
+            CreerSeanceRequest(TypeSeance.ENDURANCE, 10.0, 50, hier, ville = "Lille", pays = "   "),
+            "abdou@test.fr")
+
+        assertThat(capture.captured.pays).isEqualTo("France")
     }
 
     @Test

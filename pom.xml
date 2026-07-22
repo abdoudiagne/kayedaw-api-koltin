@@ -28,6 +28,27 @@
     </properties>
 
     <dependencies>
+
+        <!--
+            Génération de PDF côté SERVEUR, et non dans le navigateur.
+
+            Trois raisons : l'autorisation est déjà là (un export d'utilisateurs
+            est réservé à ADMIN, et la vérifier au même endroit que le reste évite
+            une seconde règle à tenir), les données aussi (l'export porte sur
+            TOUTES les séances, pas sur la page affichée), et le fichier produit
+            ne dépend ni du navigateur ni de sa configuration d'impression.
+
+            PDFBox plutôt qu'iText : licence Apache 2.0, sans clause AGPL ni
+            obligation de publier le code appelant. Son API est de bas niveau —
+            on dessine du texte à des coordonnées — d'où le petit utilitaire de
+            tableau dans `common/DocumentPdf.kt`. C'est le prix d'une licence
+            permissive, et il est payé une fois.
+        -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

@@ -39,8 +39,14 @@ data class AppProperties(
         val plafondHebdoKm: Double,
         /** Distance maximale acceptée pour une séance unique. */
         val distanceMaxSeanceKm: Double,
-        /** Horizon de PLANIFICATION : au-delà, la séance est refusée. */
-        val planificationMaxJours: Long = 14
+        /**
+         * Horizon de PLANIFICATION : au-delà, la séance est refusée.
+         *
+         * ⚠️ Plus long que la portée des prévisions Open-Meteo (16 jours de
+         * fenêtre, soit J+15) : entre les deux, une séance est valide mais
+         * revient sans météo. Le front l'annonce à la saisie.
+         */
+        val planificationMaxJours: Long = 30
     )
 
     /** Services externes appelés via WebClient (API Open-Meteo, sans clé). */

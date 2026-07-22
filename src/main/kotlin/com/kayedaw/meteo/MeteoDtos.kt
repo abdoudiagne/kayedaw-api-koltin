@@ -21,8 +21,23 @@ data class ResultatGeocodage(
     val latitude: Double,
     val longitude: Double,
     val country: String? = null,
+    /** Code ISO 3166 renvoyé par le géocodeur : le rapprochement le plus sûr. */
+    val country_code: String? = null,
+    /** Fuseau IANA de la ville (« Africa/Dakar »), renvoyé par le géocodeur. */
+    val timezone: String? = null,
     /** Codes postaux de la commune : c'est d'eux qu'on déduit le département. */
-    val postcodes: List<String>? = null
+    val postcodes: List<String>? = null,
+
+    /**
+     * Division administrative de premier niveau : région, État, province…
+     * « Kaolack » pour une commune sénégalaise, « Hauts-de-France » pour Lille.
+     *
+     * Elle sert à SITUER une suggestion à l'écran. Sans elle, la liste
+     * affichait des noms nus — « Bamba », « Mbamb » — que rien ne rattachait
+     * au pays choisi : le filtre faisait son travail, mais l'utilisateur n'avait
+     * aucun moyen de le vérifier et pouvait croire à des résultats étrangers.
+     */
+    val admin1: String? = null
 )
 
 /** Objet-valeur du domaine, découplé du format de l'API externe. */
@@ -31,7 +46,25 @@ data class Coordonnees(
     val latitude: Double,
     val longitude: Double,
     /** Numéro de département, requis par DPClim (« 59 », « 2A », « 974 »…). */
-    val departement: String? = null
+    val departement: String? = null,
+    /**
+     * Région administrative, pour l'affichage uniquement.
+     *
+     * ⚠️ Distincte de `departement`, et il ne faut PAS les confondre : DPClim
+     * interroge ses stations par NUMÉRO de département français. Y glisser
+     * « Kaolack » ferait échouer la recherche de station sans message clair.
+     */
+    val region: String? = null,
+    /** Pays tel que nommé par le géocodeur, dans la langue demandée. */
+    val pays: String? = null,
+    /**
+     * Fuseau de la VILLE, et non celui du serveur.
+     *
+     * Toutes les requêtes météo passaient `Europe/Paris` en dur : pour Dakar
+     * (UTC+0) les agrégats journaliers et la température horaire auraient été
+     * décalés d'une à deux heures — un écart discret, jamais signalé.
+     */
+    val fuseau: String = "Europe/Paris"
 )
 
 /**

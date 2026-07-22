@@ -47,35 +47,102 @@ class MeteoClient(
     private val config get() = proprietes.meteo
 
     companion object {
-        /** L'application cible la France : on borne le géocodage en conséquence. */
-        private const val PAYS = "FR"
-        private const val FUSEAU = "Europe/Paris"
+        /** Pays retenu quand l'utilisateur n'en a pas renseigné. */
+        const val PAYS_PAR_DEFAUT = "France"
+
+        /**
+         * ⚠️ CONTOURNEMENT D'UN DÉFAUT D'OPEN-METEO, ne pas « simplifier » en 1.
+         *
+         * Le géocodeur renvoie ZÉRO résultat avec `count=1` là où `count=2` en
+         * renvoie un. Mesuré et reproductible : « Bargny » et « Saint-Louis »
+         * (Sénégal) sont introuvables à 1, trouvés à 2. Aucune ville française
+         * testée n'est touchée, ce qui rendait le défaut invisible tant que
+         * l'application était bornée à la France.
+         *
+         * On demande donc deux résultats et l'on garde le premier.
+         */
+        private const val MINIMUM_RESULTATS = 2
+
+        /**
+         * ┌───────────────────────────────────────────────────────────────────┐
+         * │ Pourquoi 100, le MAXIMUM accepté, et pas « une marge raisonnable »│
+         * └───────────────────────────────────────────────────────────────────┘
+         *
+         * Le géocodeur classe MONDIALEMENT avant de tronquer, puis applique le
+         * filtre de pays. Une commune modeste est donc évincée par ses
+         * homonymes plus peuplés bien avant que son pays ne soit pris en
+         * compte. Mesuré sur « bambi » au Sénégal :
+         *
+         *   count=20  → 20 résultats (Angola, Tanzanie, Centrafrique…), 0 au Sénégal
+         *   count=50  → 50 résultats, toujours 0 au Sénégal
+         *   count=100 → 85 résultats, dont **Bambilor**
+         *
+         * Une marge proportionnelle à la limite d'affichage (`limite * 3`) ne
+         * suffisait pas : elle borne ce qu'on AFFICHE, pas la profondeur à
+         * laquelle la bonne réponse se trouve. Les grandes villes restent en
+         * tête — « dak » rend toujours Dakar en premier — donc rien n'est perdu
+         * à demander large.
+         */
+        private const val RESULTATS_GEOCODAGE = 100
     }
 
-    /** Ville -> coordonnées. Retourne null si la ville est inconnue. */
-    suspend fun coordonnees(ville: String): Coordonnees? {
+    /**
+     * Correspondance de pays.
+     *
+     * On privilégie le CODE ISO, que le géocodeur accepte en paramètre et qui
+     * ne dépend d'aucune orthographe. Le rapprochement par nom ne sert plus que
+     * de repli, pour un pays saisi hors du référentiel.
+     */
+    private fun correspondAuPays(resultat: ResultatGeocodage, pays: String): Boolean {
+        val attendu = Pays.code(pays)
+        return if (attendu != null && resultat.country_code != null) {
+            resultat.country_code.equals(attendu, ignoreCase = true)
+        } else {
+            normaliser(resultat.country) == normaliser(pays)
+        }
+    }
+
+    /** Compare sans accents ni casse : « Sénégal » doit valoir « senegal ». */
+    private fun normaliser(valeur: String?): String =
+        java.text.Normalizer.normalize(valeur.orEmpty(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase()
+            .trim()
+
+    private fun versCoordonnees(r: ResultatGeocodage) = Coordonnees(
+        ville = r.name,
+        latitude = r.latitude,
+        longitude = r.longitude,
+        // Le code postal porte le département, dont DPClim a besoin
+        departement = departementDepuisCodePostal(r.postcodes?.firstOrNull()),
+        region = r.admin1,
+        pays = r.country,
+        fuseau = r.timezone ?: "Europe/Paris"
+    )
+
+    /**
+     * Ville + pays -> coordonnées. Retourne null si la ville est inconnue.
+     *
+     * Le pays lève l'homonymie que le `countryCode=FR` en dur réglait avant :
+     * « Paris » ne peut plus renvoyer Paris (Texas) tant que le compte est en
+     * France, et « Dakar » ne renvoie pas celui de Syrie pour un compte
+     * sénégalais.
+     */
+    suspend fun coordonnees(ville: String, pays: String = PAYS_PAR_DEFAUT): Coordonnees? {
         val reponse = appeler<GeocodageReponse>(
             uri = uri(config.urlGeocodage) {
                 it.queryParam("name", ville.trim())
-                    .queryParam("count", 1)
+                    .queryParam("count", RESULTATS_GEOCODAGE)
                     .queryParam("language", "fr")
                     .queryParam("format", "json")
-                    // Sans ce filtre, « Paris » peut renvoyer Paris (Texas)
-                    .queryParam("countryCode", PAYS)
+                    .apply { Pays.code(pays)?.let { iso -> queryParam("countryCode", iso) } }
             },
             libelle = "géocodage"
         ) ?: return null
 
-        // Chaîne de safe calls : si un maillon est null, tout l'appel vaut null
-        return reponse.results?.firstOrNull()?.let {
-            Coordonnees(
-                ville = it.name,
-                latitude = it.latitude,
-                longitude = it.longitude,
-                // Le code postal porte le département, dont DPClim a besoin
-                departement = departementDepuisCodePostal(it.postcodes?.firstOrNull())
-            )
-        }
+        val resultats = reponse.results.orEmpty()
+        // On préfère une homonyme du BON pays ; à défaut on ne devine pas.
+        return resultats.firstOrNull { correspondAuPays(it, pays) }?.let(::versCoordonnees)
     }
 
     /**
@@ -83,7 +150,11 @@ class MeteoClient(
      * bornés à la France. Même point d'entrée que `coordonnees`, mais on rend
      * la liste au lieu de ne garder que le premier.
      */
-    suspend fun rechercherVilles(terme: String, limite: Int = 8): List<Coordonnees> {
+    suspend fun rechercherVilles(
+        terme: String,
+        limite: Int = 8,
+        pays: String = PAYS_PAR_DEFAUT
+    ): List<Coordonnees> {
         if (terme.trim().length < 2) {
             return emptyList()          // on n'interroge pas l'API sur une lettre
         }
@@ -91,22 +162,30 @@ class MeteoClient(
         val reponse = appeler<GeocodageReponse>(
             uri = uri(config.urlGeocodage) {
                 it.queryParam("name", terme.trim())
-                    .queryParam("count", limite)
+                    .queryParam("count", maxOf(RESULTATS_GEOCODAGE, MINIMUM_RESULTATS))
                     .queryParam("language", "fr")
                     .queryParam("format", "json")
-                    .queryParam("countryCode", PAYS)
+                    /*
+                     * `countryCode` REVIENT — mais dérivé du pays demandé, là où
+                     * il était autrefois figé sur `FR`. Il allège la réponse et
+                     * le géocodeur l'honore.
+                     *
+                     * ⚠️ Il ne DISPENSE PAS du filtrage local ni du `count`
+                     * élevé : à `count=20`, « bambi » + `countryCode=SN` rend
+                     * zéro résultat, et il en rend un à `count=100`. La
+                     * troncature mondiale s'applique donc avant lui. Et il ne
+                     * peut rien quand on ne connaît que le NOM du pays, sans
+                     * code ISO correspondant.
+                     */
+                    .apply { Pays.code(pays)?.let { iso -> queryParam("countryCode", iso) } }
             },
             libelle = "recherche de villes"
         ) ?: return emptyList()
 
-        return reponse.results.orEmpty().map {
-            Coordonnees(
-                ville = it.name,
-                latitude = it.latitude,
-                longitude = it.longitude,
-                departement = departementDepuisCodePostal(it.postcodes?.firstOrNull())
-            )
-        }
+        return reponse.results.orEmpty()
+            .filter { correspondAuPays(it, pays) }
+            .take(limite)
+            .map(::versCoordonnees)
     }
 
     /**
@@ -133,7 +212,17 @@ class MeteoClient(
                     .queryParam("end_date", date)
                     .queryParam("daily",
                         "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max")
-                    .queryParam("timezone", FUSEAU)
+                    /*
+                     * La série HORAIRE manquait à l'archive alors que la
+                     * prévision la demandait déjà. Conséquence : une séance
+                     * passée enrichie par l'archive n'avait pas de
+                     * `temperatureALHeureC` — on savait qu'il avait fait 32 °C
+                     * ce jour-là, pas la chaleur subie à 7 h. Invisible en
+                     * France, où DPClim fournit l'heure ; systématique partout
+                     * ailleurs, l'archive y étant le seul recours.
+                     */
+                    .queryParam("hourly", "temperature_2m,wind_speed_10m")
+                    .queryParam("timezone", coordonnees.fuseau)
             },
             libelle = "météo"
         )
@@ -150,7 +239,7 @@ class MeteoClient(
                         "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max")
                     // La série horaire permet de comparer deux créneaux du jour
                     .queryParam("hourly", "temperature_2m,wind_speed_10m")
-                    .queryParam("timezone", FUSEAU)
+                    .queryParam("timezone", coordonnees.fuseau)
             },
             libelle = "prévision météo"
         )
@@ -169,7 +258,7 @@ class MeteoClient(
                     .queryParam("start_date", date)
                     .queryParam("end_date", date)
                     .queryParam("hourly", "pm2_5")
-                    .queryParam("timezone", FUSEAU)
+                    .queryParam("timezone", coordonnees.fuseau)
             },
             libelle = "qualité de l'air"
         )

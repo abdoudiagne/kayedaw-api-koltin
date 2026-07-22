@@ -92,6 +92,13 @@ class SecurityConfig(
                  * débit, un relais ouvert restant une ressource abusable.
                  */
                 it.requestMatchers(HttpMethod.GET, "/api/meteo/villes").permitAll()
+                /*
+                 * Le référentiel des pays est lu par l'écran d'INSCRIPTION,
+                 * donc avant toute session. Le protéger rendrait le champ vide
+                 * exactement là où il sert — et il ne révèle rien : c'est la
+                 * liste ISO 3166, publique par nature.
+                 */
+                it.requestMatchers(HttpMethod.GET, "/api/meteo/pays").permitAll()
                 it.requestMatchers("/h2-console/**").permitAll()
                 it.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 // Défense en profondeur : rôle exigé ici ET via @PreAuthorize
